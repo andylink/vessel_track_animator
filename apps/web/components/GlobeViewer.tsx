@@ -41,6 +41,7 @@ export function GlobeViewer({
     let disposed = false;
 
     void (async () => {
+      (globalThis as typeof globalThis & { CESIUM_BASE_URL?: string }).CESIUM_BASE_URL = '/cesium';
       const Cesium = await import('cesium');
       cesiumRef.current = Cesium;
       if (disposed || !containerRef.current) {

@@ -3,7 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "copy:cesium": "node ./scripts/copy-cesium-assets.mjs",
+    "predev": "pnpm copy:cesium",
     "dev": "next dev -p 3000",
+    "prebuild": "pnpm copy:cesium",
     "build": "next build",
     "start": "next start -p 3000",
     "lint": "next lint",
