@@ -1,0 +1,26 @@
+{
+  "name": "VesselAnimator",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
+    },
+    "ghcr.io/devcontainers/features/git:1": {}
+  },
+  "forwardPorts": [3000, 3001, 4000, 6379],
+  "postCreateCommand": "pnpm install && pnpm -r build",
+  "postStartCommand": "redis-server --daemonize yes --port 6379",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "esbenp.prettier-vscode",
+        "dbaeumer.vscode-eslint"
+      ]
+    }
+  },
+  "remoteEnv": {
+    "DOCKER_IN_DOCKER": "false"
+  }
+}

@@ -1,0 +1,247 @@
+1. Summary of the Service You Want to Build
+A web service where a user can:
+
+Upload a vessel passage (CSV with Lat/Long/time).
+OR select historical AIS data from an integrated AIS provider.
+The system will generate an animated playback of the vessel track on a 3D globe (or 2D map), automatically:
+
+Following the vessel along the route
+Zooming when entering port areas
+Supporting vessel type styling (cruise ship, yacht, cargo, etc.)
+Adding background music & minimal personalization
+
+
+Output the final animation in 4K video, formatted for YouTube, TikTok, Instagram Reels, etc.
+Similar to animatemytravel.com but strictly maritime-focused.
+
+
+2. Recommended Tech Stack (High‑Level)
+Frontend
+
+Three.js or CesiumJS (for 3D globe animation).
+
+CesiumJS is ideal for dynamic 3D globe flythroughs.
+
+
+React or Vue for UI.
+
+Backend
+
+Node.js or Python (FastAPI) for API services.
+FFmpeg for video rendering and audio integration.
+Worker queue: Redis Queue or RabbitMQ for long-running rendering jobs.
+
+Data Processing & Mapping
+
+GDAL/GeoPandas (Python) or Turf.js for geographic handling.
+Map tiles: Cesium ion or Mapbox.
+
+Rendering Pipeline
+
+Real-time WebGL preview in browser
+Server-side final render:
+
+Node + Puppeteer (headless browser rendering)
+OR CesiumJS + custom frame exporter
+FFmpeg to assemble frames + music into 4K output
+
+
+
+
+3. AIS Data Providers (Reliable & Cost Conscious)
+Below are your best options, based on current (2026) market structure.
+A. Datalastic (high reliability, developer‑friendly, offers historical AIS)
+
+Provides real-time and historical AIS, very large ship database, and simple API.
+Designed for developers and supports CSV and historical ship movements. [datalastic.com]
+
+B. Kpler AIS (MarineTraffic + FleetMon + Spire Maritime)
+
+Currently the dominant end‑to‑end provider: terrestrial + satellite + 100+ nanosatellites after acquisitions.
+Excellent coverage and reliability but typically mid-to-high tier pricing. [worldwideais.org]
+
+C. ORBCOMM (independent satellite AIS provider)
+
+Satellite + terrestrial AIS, still independent after market consolidation.
+ [datapository.net]
+
+D. NavAPI (low-cost AIS positions API)
+
+AIS with price points starting around €600/year, comparatively cheaper. [navapi.com]
+
+Summary Recommendation
+For cost‑efficiency + quality: Datalastic or NavAPI.
+For premium global coverage: Kpler AIS or ORBCOMM.
+
+4. How the System Works (Workflow Summary)
+1. User Input
+
+Upload CSV
+Or choose vessel + date range → send request to AIS provider API.
+
+2. Data Normalisation
+
+Interpolate inconsistent timestamps
+Smooth the polyline path
+Detect port calls by speed < 1–2 knots + proximity to known ports.
+
+3. Visual Animation Logic
+
+Use CesiumJS camera to auto-follow the vessel:
+
+Dynamic camera angle
+Auto zoom near ports
+
+
+Pull custom 3D models or icons based on vessel type.
+
+4. Rendering
+
+Browser preview at lower resolution
+Final render on backend:
+
+Render each frame using CesiumJS offscreen
+Export to PNG sequence
+FFmpeg merges frames + selected audio → 4K MP4
+
+
+
+5. Export for Platforms
+
+YouTube (16:9, 4K)
+TikTok/Reels (9:16 vertical)
+Instagram (1:1 or 4:5)
+FFmpeg handles all aspect ratio conversions.
+
+
+5. Final High‑Level Build Summary
+You are essentially building:
+
+A vessel‑focused, automated cinematic voyage animator, powered by uploaded routes or AIS provider data, outputting professional 4K social‑media‑ready videos with personalization and smooth globe‑based animation.
+
+Your tech stack:
+CesiumJS + Node/Python + FFmpeg + AIS API (Datalastic/NavAPI/Kpler)
+— gives you rock‑solid mapping, reliable AIS ingestion, and high‑quality rendered outputs.
+
+
+PROMPT
+
+
+You are scaffolding an MVP web app called "VesselAnimator". Goals:
+1) Users upload a CSV of Lat,Long,Timestamp OR choose a vessel + date range (stubbed AIS provider).
+2) Show a web preview: animated vessel track on a 3D globe with auto-follow and basic zoom near ports.
+3) Server-side export: render the animation to 4K MP4 and let the user download. Add background music track mixing.
+4) Minimal personalization: vessel type selection (cruise, yacht, cargo) alters icon/model + color.
+5) Ready-to-run in GitHub Codespaces via devcontainer.
+
+Tech decisions (do not change):
+- Frontend: Next.js (App Router), React, CesiumJS. Styling with TailwindCSS.
+- Backend API: Node.js + Express (in the same repo, mounted under /api via next.config).
+- Job queue: BullMQ + Redis (use a local Redis in devcontainer).
+- Rendering worker: Node script using Puppeteer (headless Chromium) to open a headless route viewer page and capture frames → FFmpeg to produce 4K MP4; optional background music mixed in.
+- Map assets: Cesium ion token read from env; fall back to a basic OpenStreetMap raster if token missing.
+- GIS utils: turf.js for interpolation and port proximity checks.
+- Storage: local /tmp for uploaded CSV and rendered outputs (S3-ready abstractions but disabled by default).
+- Lint/format: ESLint + Prettier.
+- Testing: minimal Vitest for utility functions.
+- License: MIT.
+
+Deliverables to generate now:
+A) Repository layout:
+  - /.devcontainer/
+      - devcontainer.json (Node 20 base, install ffmpeg, redis-server, chromium deps; forward ports 3000, 3001, 6379)
+      - Dockerfile (apt-get installs: ffmpeg, redis-server, fonts, Chromium deps)
+  - /apps/web/ (Next.js app)
+      - next.config.mjs (rewrite /api/* to Express server on 3001 during dev)
+      - app/(routes)/
+          - page.tsx (landing + upload form + AIS selector)
+          - preview/page.tsx (globe preview with start/pause, speed control)
+          - api/health/route.ts (simple ok)
+      - components/
+          - FileDrop.tsx (CSV upload)
+          - VesselTypePicker.tsx
+          - TimelineControls.tsx
+          - GlobeViewer.tsx (CesiumJS scene: loads polyline, animated entity, camera follow, on-port zoom)
+      - lib/
+          - csv.ts (parse & validate Lat,Long,Timestamp; returns GeoJSON + samples)
+          - aisClient.ts (interface + stub implementation; env flag to switch to provider later)
+          - ports.ts (tiny JSON of a few ports w/ lat/long for demo; function isNearPort(point))
+          - trackOps.ts (resampling, interpolation, smoothing using turf)
+      - public/
+          - audio/demo.mp3 (placeholder)
+          - icons/{cruise.svg,yacht.svg,cargo.svg}
+      - styles/globals.css (Tailwind)
+  - /apps/api/ (Express server)
+      - src/index.ts (upload endpoint, AIS fetch endpoint, job submission to BullMQ)
+      - src/jobs/renderQueue.ts (BullMQ queue & processor)
+      - src/render/renderer.ts (Puppeteer page load of /render/route?jobId=, capture PNG frames)
+      - src/render/ffmpeg.ts (FFmpeg concat frames to 4K MP4, mix background music, output bitrate/preset)
+      - src/types.ts (shared DTOs)
+  - /apps/render-view/ (minimal Next page only used by Puppeteer)
+      - server.ts (tiny server that serves a headless route viewer using Cesium; no UI chrome)
+      - pages/index.html (script reads a serialized route JSON from query or file path; renders same animation deterministically)
+      - public/ (same icons)
+  - /packages/shared/
+      - env.ts (dotenv-zod schema: CESIUM_ION_TOKEN, AIS_PROVIDER, AIS_API_KEY)
+      - geo.ts (shared types)
+  - /scripts/
+      - seed-demo-route.ts (generate a short demo route around a port)
+  - package.json (pnpm workspaces, scripts)
+  - pnpm-workspace.yaml
+  - README.md
+
+B) Implementation details & code:
+1) devcontainer.json:
+   - Name: "VesselAnimator"
+   - Features: Node 20, git, docker-in-docker false
+   - PostCreateCommand: pnpm install; pnpm -r build
+   - Customizations: VS Code extensions (esbenp.prettier-vscode, dbaeumer.vscode-eslint)
+   - Forward ports: 3000 (web), 3001 (api), 4000 (render-view), 6379 (redis)
+
+2) Dockerfile (for devcontainer):
+   - FROM mcr.microsoft.com/devcontainers/javascript-node:20
+   - RUN apt-get update && apt-get install -y ffmpeg redis-server xvfb libnss3 libatk1.0-0 libx11-xcb1 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 libpangocairo-1.0-0 libxshmfence1 fonts-liberation && rm -rf /var/lib/apt/lists/*
+
+3) Next.js app:
+   - Configure CesiumJS: set up Cesium ion token from env; lazy-load viewer to avoid SSR
+   - GlobeViewer.tsx:
+       * Props: geojson LineString + timestamps, vesselType
+       * Renders animated entity moving along interpolated positions at a controllable speed
+       * Camera follow; when nearing a port (ports.ts proximity), ease to lower altitude + slight tilt
+   - CSV upload flow: POST to /api/upload → returns normalized routeId; preview button navigates to /preview?routeId=...
+   - AIS selection: simple form (MMSI/IMO + date range) → calls /api/ais → returns a mocked track unless env contains AIS provider key
+
+4) Express API:
+   - /upload (multipart): validate CSV; store as JSON in /tmp/routes/{id}.json; return routeId
+   - /ais (POST): {mmsi, start, end} → if AIS_API_KEY missing, return seed-demo track; else call stub provider class (no external dependency now)
+   - /render (POST): {routeId, vesselType, aspect, fps, music:boolean} → add job to BullMQ
+   - /render/:jobId (GET): status (queued, processing, done), and when done provide a signed local URL (simple local link) to MP4
+   - Redis locally: start at container boot; BullMQ queue named "render-queue"
+
+5) Render worker:
+   - For each job: launch headless Chromium with Puppeteer (use XVFB if needed), open http://localhost:4000/?routePath=/tmp/routes/{id}.json&width=3840&height=2160&fps=30&duration=NN
+   - Use page.screenshot per animation frame or a canvas capture API; write frames to /tmp/frames/{jobId}/frame_%06d.png
+   - FFmpeg merges frames to 4K MP4 (H.264, yuv420p, CRF 18, preset medium, 30fps); if music=true, mix in /apps/web/public/audio/demo.mp3 at -18 LUFS equivalent gain
+   - Save /tmp/exports/{jobId}.mp4
+
+6) Rendering determinism:
+   - The headless render-view page should take a JSON route and a seed; animation timeline purely driven by a frame counter (no real time). This guarantees reproducible outputs.
+
+7) Scripts and package.json:
+   - "dev": concurrently run: next dev (port 3000), express api (port 3001), render-view server (port 4000), redis-server
+   - "build": build all apps
+   - "lint", "format"
+   - "test": vitest
+   - "render:local": helper CLI to enqueue a seed demo route job
+
+8) README.md:
+   - Quick start in Codespaces: open, wait for postCreate, then `pnpm dev`, visit http://localhost:3000
+   - How to upload a CSV; how to preview; how to render 4K; where files are stored
+   - Env vars: CESIUM_ION_TOKEN (optional), AIS_PROVIDER (string), AIS_API_KEY (string)
+   - Notes on AIS provider integration (stub now; wire later), and on license for map tiles.
+
+9) Minimal tests (vitest) for csv.ts and trackOps.ts.
+
+10) Accessibility & basic UX: keyboard controls for play/pause (space), speed +/- (←/→).
+
+Generate all files with sensible, runnable defaults. Keep code compact but real, not pseudocode. Add TODO comments where future work is expected. After generating, ensure `pnpm dev` works in Codespaces (web at :3000, API :3001, render-view :4000, Redis :6379). 

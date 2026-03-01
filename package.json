@@ -1,0 +1,27 @@
+{
+  "name": "vesselanimator",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "packageManager": "pnpm@9.15.3",
+  "scripts": {
+    "dev": "concurrently -k -n web,api,render,redis \"pnpm --filter @vessel/web dev\" \"pnpm --filter @vessel/api dev\" \"pnpm --filter @vessel/render-view dev\" \"sh -c 'if command -v redis-server >/dev/null 2>&1; then redis-server --port 6379; else echo redis-server-not-found; tail -f /dev/null; fi'\"",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "format": "prettier --write .",
+    "test": "pnpm -r test",
+    "render:local": "pnpm --filter @vessel/api render:local"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.22.0",
+    "@types/node": "^22.13.10",
+    "concurrently": "^9.1.2",
+    "eslint": "^9.22.0",
+    "eslint-config-prettier": "^10.1.1",
+    "prettier": "^3.5.3",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^2.1.8"
+  }
+}
