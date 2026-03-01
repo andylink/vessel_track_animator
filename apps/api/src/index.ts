@@ -16,6 +16,45 @@ app.use(cors());
 app.use(express.json());
 app.use('/downloads', express.static('/tmp/exports'));
 
+function detectDelimiter(headerLine: string): string {
+  const commaCount = (headerLine.match(/,/g) || []).length;
+  const semicolonCount = (headerLine.match(/;/g) || []).length;
+  return semicolonCount > commaCount ? ';' : ',';
+}
+
+function parseTimestamp(rawTime: string, fallbackMs: number): string {
+  if (!rawTime) {
+    return new Date(fallbackMs).toISOString();
+  }
+
+  const parsed = Date.parse(rawTime);
+  if (!Number.isNaN(parsed)) {
+    return new Date(parsed).toISOString();
+  }
+
+  const match = rawTime.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{2})\s+(\d{1,2}):(\d{2}):(\d{2})$/);
+  if (match) {
+    const [, dayRaw, monthRaw, yearRaw, hourRaw, minuteRaw, secondRaw] = match;
+    const monthIndex = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'].indexOf(
+      monthRaw.toLowerCase()
+    );
+
+    if (monthIndex >= 0) {
+      const day = Number(dayRaw);
+      const year = 2000 + Number(yearRaw);
+      const hour = Number(hourRaw);
+      const minute = Number(minuteRaw);
+      const second = Number(secondRaw);
+      const timestampMs = Date.UTC(year, monthIndex, day, hour, minute, second);
+      if (!Number.isNaN(timestampMs)) {
+        return new Date(timestampMs).toISOString();
+      }
+    }
+  }
+
+  return new Date(fallbackMs).toISOString();
+}
+
 function parseCsvRows(csvRaw: string): ApiRouteFile['points'] {
   const lines = csvRaw
     .split(/\r?\n/)
@@ -25,8 +64,10 @@ function parseCsvRows(csvRaw: string): ApiRouteFile['points'] {
     throw new Error('CSV must include header and records');
   }
 
+  const delimiter = detectDelimiter(lines[0]);
+
   const headers = lines[0]
-    .split(',')
+    .split(delimiter)
     .map((cell) => cell.trim().toLowerCase())
     .map((cell) => cell.replace(/^"|"$/g, ''));
 
@@ -39,14 +80,14 @@ function parseCsvRows(csvRaw: string): ApiRouteFile['points'] {
   }
 
   const points = lines.slice(1).flatMap((line, index) => {
-    const cells = line.split(',').map((cell) => cell.trim().replace(/^"|"$/g, ''));
+    const cells = line.split(delimiter).map((cell) => cell.trim().replace(/^"|"$/g, ''));
     const lat = Number(cells[latIndex]);
     const lon = Number(cells[lonIndex]);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
       return [];
     }
     const raw = tsIndex >= 0 ? cells[tsIndex] : '';
-    const timestamp = raw && !Number.isNaN(Date.parse(raw)) ? new Date(raw).toISOString() : new Date(1700000000000 + index * 60000).toISOString();
+    const timestamp = parseTimestamp(raw, 1700000000000 + index * 60000);
     return [{ lat, lon, timestamp }];
   });
 
@@ -135,7 +176,9 @@ app.post('/render', async (req, res) => {
     }
 
     const jobId = uuid();
-    await renderQueue.add(RENDER_JOB_NAME, {
+    const queuedJob = await renderQueue.add(
+      RENDER_JOB_NAME,
+      {
       jobId,
       routeId,
       vesselType,
@@ -143,9 +186,11 @@ app.post('/render', async (req, res) => {
       fps,
       music,
       outputPath: `/tmp/exports/${jobId}.mp4`
-    });
+      },
+      { jobId }
+    );
 
-    return res.json({ jobId, status: 'queued' });
+    return res.json({ jobId: String(queuedJob.id), status: 'queued' });
   } catch (error) {
     return res.status(500).send(error instanceof Error ? error.message : 'Render submit failed');
   }
@@ -159,6 +204,9 @@ app.get('/render/:jobId', async (req, res) => {
 
   const state = await job.getState();
   const response: Record<string, unknown> = { jobId: job.id, status: state };
+  if (state === 'failed') {
+    response.error = job.failedReason ?? 'Render failed';
+  }
   if (state === 'completed') {
     response.downloadUrl = `http://localhost:3001/downloads/${req.params.jobId}.mp4`;
   }

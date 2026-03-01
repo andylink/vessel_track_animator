@@ -6,7 +6,7 @@
   "license": "MIT",
   "packageManager": "pnpm@9.15.3",
   "scripts": {
-    "dev": "concurrently -k -n web,api,render,redis \"pnpm --filter @vessel/web dev\" \"pnpm --filter @vessel/api dev\" \"pnpm --filter @vessel/render-view dev\" \"sh -c 'if command -v redis-server >/dev/null 2>&1; then redis-server --port 6379; else echo redis-server-not-found; tail -f /dev/null; fi'\"",
+    "dev": "concurrently -k -n web,api,render,redis \"pnpm --filter @vessel/web dev\" \"pnpm --filter @vessel/api dev\" \"pnpm --filter @vessel/render-view dev\" \"sh -c 'if command -v redis-server >/dev/null 2>&1; then if ss -ltn | grep -q \":6379\"; then echo redis-already-running-on-6379; tail -f /dev/null; else redis-server --port 6379; fi; else echo redis-server-not-found; tail -f /dev/null; fi'\"",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
     "format": "prettier --write .",

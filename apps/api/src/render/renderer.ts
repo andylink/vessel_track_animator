@@ -28,7 +28,8 @@ export async function renderJob(params: {
     const page = await browser.newPage();
     const totalFrames = 300;
     const viewerUrl = `http://localhost:4000/?routePath=${encodeURIComponent(params.routePath)}&width=3840&height=2160&fps=${params.fps}&frames=${totalFrames}&seed=${params.jobId}`;
-    await page.goto(viewerUrl, { waitUntil: 'networkidle0' });
+    await page.goto(viewerUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForFunction(() => typeof (window as any).__setFrame === 'function', { timeout: 20000 });
 
     for (let frame = 0; frame < totalFrames; frame += 1) {
       await page.evaluate(

@@ -19,6 +19,7 @@ export function PreviewClient() {
   const [speed, setSpeed] = useState(1);
   const [progress, setProgress] = useState(0);
   const [renderJob, setRenderJob] = useState<string>('');
+  const [renderError, setRenderError] = useState<string>('');
 
   useEffect(() => {
     if (!routeId) {
@@ -74,12 +75,14 @@ export function PreviewClient() {
     if (!routeId) {
       return;
     }
+    setRenderError('');
     const response = await fetch('/api/render', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ routeId, vesselType, aspect: '16:9', fps: 30, music: true })
     });
     if (!response.ok) {
+      setRenderError(await response.text());
       return;
     }
     const payload = (await response.json()) as { jobId: string };
@@ -107,6 +110,7 @@ export function PreviewClient() {
           </a>
         ) : null}
       </div>
+      {renderError ? <p className="text-sm text-rose-400">{renderError}</p> : null}
     </main>
   );
 }
