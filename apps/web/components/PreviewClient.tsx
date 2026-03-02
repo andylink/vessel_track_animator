@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { VesselType } from '@vessel/shared/geo';
 import { GlobeViewer } from '@/components/GlobeViewer';
+import { DEFAULT_KEYFRAMES, KeyframeEditor, type Keyframe } from '@/components/KeyframeEditor';
 import { TimelineControls } from '@/components/TimelineControls';
 import { resampleTrack, smoothTrack, totalDistanceKm, type TimedPosition } from '@/lib/trackOps';
 
@@ -29,6 +30,7 @@ export function PreviewClient() {
   const [followCamera, setFollowCamera] = useState(false);
   const [cinematic, setCinematic] = useState(true);
   const [locationInfo, setLocationInfo] = useState<LocationInfo | null>(null);
+  const [keyframes, setKeyframes] = useState<Keyframe[]>(DEFAULT_KEYFRAMES);
 
   useEffect(() => {
     if (!routeId) {
@@ -140,59 +142,70 @@ export function PreviewClient() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-4 px-4 py-4">
-      <h1 className="text-2xl font-semibold">Preview</h1>
-      <p className="text-sm text-slate-300">Space: play/pause, ←/→ speed, route length: {distance.toFixed(2)} km</p>
-      <TimelineControls
-        playing={playing}
-        speed={speed}
-        onPlayPause={() => setPlaying((value) => !value)}
-        onSpeedChange={setSpeed}
-        onReset={() => {
-          setPlaying(false);
-          setProgress(0);
-        }}
-        followCamera={followCamera}
-        onFollowChange={(next) => setFollowCamera(next)}
-        cinematic={cinematic}
-        onCinematicChange={(next) => setCinematic(next)}
-      />
-      <div className="relative">
-        <GlobeViewer
-          samples={samples}
-          vesselType={vesselType}
-          progress={progress}
-          playing={playing}
-          followCamera={followCamera}
-          cinematic={cinematic}
-        />
-        {locationInfo && progress < 0.12 ? (
-          <div className="absolute left-4 top-4 z-10 flex items-center gap-3 rounded bg-slate-900/90 px-3 py-2 shadow-lg">
-            {locationInfo.countryCode ? (
-              <img
-                src={`https://flagcdn.com/w80/${locationInfo.countryCode}.png`}
-                alt={locationInfo.country}
-                className="h-8 w-12 rounded border border-slate-700 object-cover"
-              />
+    <main className="flex min-h-screen w-screen flex-col gap-4 px-4 py-4">
+      <div className="flex flex-col gap-1 px-2">
+        <h1 className="text-2xl font-semibold">Preview</h1>
+        <p className="text-sm text-slate-300">Space: play/pause, ←/→ speed, route length: {distance.toFixed(2)} km</p>
+      </div>
+
+      <div className="grid h-[calc(100vh-96px)] gap-4 px-2 lg:grid-cols-[400px_1fr]">
+        <KeyframeEditor keyframes={keyframes} onChange={setKeyframes} />
+
+        <div className="flex h-full flex-col gap-4">
+          <TimelineControls
+            playing={playing}
+            speed={speed}
+            onPlayPause={() => setPlaying((value) => !value)}
+            onSpeedChange={setSpeed}
+            onReset={() => {
+              setPlaying(false);
+              setProgress(0);
+            }}
+            followCamera={followCamera}
+            onFollowChange={(next) => setFollowCamera(next)}
+            cinematic={cinematic}
+            onCinematicChange={(next) => setCinematic(next)}
+          />
+
+          <div className="relative flex-1 overflow-hidden rounded-lg border border-slate-800 bg-slate-950/40">
+            <GlobeViewer
+              samples={samples}
+              vesselType={vesselType}
+              progress={progress}
+              playing={playing}
+              followCamera={followCamera}
+              cinematic={cinematic}
+            />
+            {locationInfo && progress < 0.12 ? (
+              <div className="absolute left-4 top-4 z-10 flex items-center gap-3 rounded bg-slate-900/90 px-3 py-2 shadow-lg">
+                {locationInfo.countryCode ? (
+                  <img
+                    src={`https://flagcdn.com/w80/${locationInfo.countryCode}.png`}
+                    alt={locationInfo.country}
+                    className="h-8 w-12 rounded border border-slate-700 object-cover"
+                  />
+                ) : null}
+                <div className="flex flex-col leading-tight">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-200">{locationInfo.title}</span>
+                  <span className="text-[11px] text-slate-300">{locationInfo.country}</span>
+                </div>
+              </div>
             ) : null}
-            <div className="flex flex-col leading-tight">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-200">{locationInfo.title}</span>
-              <span className="text-[11px] text-slate-300">{locationInfo.country}</span>
-            </div>
           </div>
-        ) : null}
+
+          <div className="flex items-center gap-3">
+            <button type="button" className="rounded bg-emerald-700 px-4 py-2" onClick={() => void renderMp4()}>
+              Render 4K MP4
+            </button>
+            {renderJob ? (
+              <a className="text-cyan-300 underline" href={`/api/render/${renderJob}`}>
+                Check job {renderJob}
+              </a>
+            ) : null}
+          </div>
+          {renderError ? <p className="text-sm text-rose-400">{renderError}</p> : null}
+        </div>
       </div>
-      <div className="flex items-center gap-3">
-        <button type="button" className="rounded bg-emerald-700 px-4 py-2" onClick={() => void renderMp4()}>
-          Render 4K MP4
-        </button>
-        {renderJob ? (
-          <a className="text-cyan-300 underline" href={`/api/render/${renderJob}`}>
-            Check job {renderJob}
-          </a>
-        ) : null}
-      </div>
-      {renderError ? <p className="text-sm text-rose-400">{renderError}</p> : null}
     </main>
   );
 }
