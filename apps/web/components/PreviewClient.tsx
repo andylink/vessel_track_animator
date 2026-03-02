@@ -7,6 +7,12 @@ import { GlobeViewer } from '@/components/GlobeViewer';
 import { TimelineControls } from '@/components/TimelineControls';
 import { resampleTrack, smoothTrack, totalDistanceKm, type TimedPosition } from '@/lib/trackOps';
 
+type LocationInfo = {
+  title: string;
+  country: string;
+  countryCode?: string;
+};
+
 const DEFAULT_TYPE: VesselType = 'cruise';
 
 export function PreviewClient() {
@@ -20,6 +26,9 @@ export function PreviewClient() {
   const [progress, setProgress] = useState(0);
   const [renderJob, setRenderJob] = useState<string>('');
   const [renderError, setRenderError] = useState<string>('');
+  const [followCamera, setFollowCamera] = useState(false);
+  const [cinematic, setCinematic] = useState(true);
+  const [locationInfo, setLocationInfo] = useState<LocationInfo | null>(null);
 
   useEffect(() => {
     if (!routeId) {
@@ -41,11 +50,52 @@ export function PreviewClient() {
   }, [routeId]);
 
   useEffect(() => {
+    if (samples.length === 0) {
+      return;
+    }
+    const first = samples[0];
+    void (async () => {
+      try {
+        const response = await fetch(
+          `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${first.lat}&longitude=${first.lon}&localityLanguage=en`
+        );
+        if (!response.ok) {
+          return;
+        }
+        const payload = (await response.json()) as {
+          city?: string;
+          locality?: string;
+          principalSubdivision?: string;
+          countryName?: string;
+          countryCode?: string;
+        };
+        const title =
+          payload.city || payload.locality || payload.principalSubdivision || payload.countryName || 'Unknown location';
+        const country = payload.countryName || 'Unknown country';
+        setLocationInfo({ title, country, countryCode: payload.countryCode?.toLowerCase() });
+      } catch (error) {
+        console.error('Reverse geocoding failed', error);
+      }
+    })();
+  }, [samples]);
+
+  useEffect(() => {
     if (!playing || samples.length < 2) {
       return;
     }
     const timer = window.setInterval(() => {
-      setProgress((current) => (current + 0.0025 * speed > 1 ? 0 : current + 0.0025 * speed));
+      let reachedEnd = false;
+      setProgress((current) => {
+        const next = current + 0.0025 * speed;
+        if (next >= 1) {
+          reachedEnd = true;
+          return 1;
+        }
+        return next;
+      });
+      if (reachedEnd) {
+        setPlaying(false);
+      }
     }, 33);
     return () => window.clearInterval(timer);
   }, [playing, samples.length, speed]);
@@ -98,8 +148,40 @@ export function PreviewClient() {
         speed={speed}
         onPlayPause={() => setPlaying((value) => !value)}
         onSpeedChange={setSpeed}
+        onReset={() => {
+          setPlaying(false);
+          setProgress(0);
+        }}
+        followCamera={followCamera}
+        onFollowChange={(next) => setFollowCamera(next)}
+        cinematic={cinematic}
+        onCinematicChange={(next) => setCinematic(next)}
       />
-      <GlobeViewer samples={samples} vesselType={vesselType} progress={progress} playing={playing} />
+      <div className="relative">
+        <GlobeViewer
+          samples={samples}
+          vesselType={vesselType}
+          progress={progress}
+          playing={playing}
+          followCamera={followCamera}
+          cinematic={cinematic}
+        />
+        {locationInfo && progress < 0.12 ? (
+          <div className="absolute left-4 top-4 z-10 flex items-center gap-3 rounded bg-slate-900/90 px-3 py-2 shadow-lg">
+            {locationInfo.countryCode ? (
+              <img
+                src={`https://flagcdn.com/w80/${locationInfo.countryCode}.png`}
+                alt={locationInfo.country}
+                className="h-8 w-12 rounded border border-slate-700 object-cover"
+              />
+            ) : null}
+            <div className="flex flex-col leading-tight">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-200">{locationInfo.title}</span>
+              <span className="text-[11px] text-slate-300">{locationInfo.country}</span>
+            </div>
+          </div>
+        ) : null}
+      </div>
       <div className="flex items-center gap-3">
         <button type="button" className="rounded bg-emerald-700 px-4 py-2" onClick={() => void renderMp4()}>
           Render 4K MP4
