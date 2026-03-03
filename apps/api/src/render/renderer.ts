@@ -3,6 +3,10 @@ import path from 'node:path';
 import puppeteer from 'puppeteer-core';
 import { encodeFramesToMp4 } from './ffmpeg';
 
+type FrameSetterWindow = typeof window & {
+  __setFrame?: (current: number, total: number) => void;
+};
+
 function resolveChromiumPath() {
   return process.env.CHROMIUM_PATH || '/usr/bin/chromium';
 }
@@ -29,12 +33,12 @@ export async function renderJob(params: {
     const totalFrames = 300;
     const viewerUrl = `http://localhost:4000/?routePath=${encodeURIComponent(params.routePath)}&width=3840&height=2160&fps=${params.fps}&frames=${totalFrames}&seed=${params.jobId}`;
     await page.goto(viewerUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.waitForFunction(() => typeof (window as any).__setFrame === 'function', { timeout: 20000 });
+    await page.waitForFunction(() => typeof (window as FrameSetterWindow).__setFrame === 'function', { timeout: 20000 });
 
     for (let frame = 0; frame < totalFrames; frame += 1) {
       await page.evaluate(
         ({ current, total }) => {
-          (window as any).__setFrame?.(current, total);
+          (window as FrameSetterWindow).__setFrame?.(current, total);
         },
         { current: frame, total: totalFrames }
       );

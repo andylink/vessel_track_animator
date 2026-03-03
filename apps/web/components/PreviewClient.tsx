@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { VesselType } from '@vessel/shared/geo';
 import { GlobeViewer } from '@/components/GlobeViewer';
-import { DEFAULT_KEYFRAMES, KeyframeEditor, type Keyframe } from '@/components/KeyframeEditor';
+import { KeyframeEditor, type Keyframe } from '@/components/KeyframeEditor';
 import { TimelineControls } from '@/components/TimelineControls';
 import { resampleTrack, smoothTrack, totalDistanceKm, type TimedPosition } from '@/lib/trackOps';
 
@@ -30,11 +30,25 @@ export function PreviewClient() {
   const [followCamera, setFollowCamera] = useState(false);
   const [cinematic, setCinematic] = useState(true);
   const [locationInfo, setLocationInfo] = useState<LocationInfo | null>(null);
-  const [keyframes, setKeyframes] = useState<Keyframe[]>(DEFAULT_KEYFRAMES);
+  const [keyframes, setKeyframes] = useState<Keyframe[]>([]);
+  const [durationSeconds, setDurationSeconds] = useState(60);
 
   useEffect(() => {
     if (!routeId) {
       return;
+    }
+    // Load persisted keyframes/duration for this route if available.
+    const stored = localStorage.getItem(`keyframes:${routeId}`);
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored) as { keyframes: Keyframe[]; durationSeconds: number };
+        setKeyframes(parsed.keyframes ?? []);
+        if (parsed.durationSeconds) {
+          setDurationSeconds(parsed.durationSeconds);
+        }
+      } catch (error) {
+        console.warn('Failed to parse stored keyframes', error);
+      }
     }
     void (async () => {
       const response = await fetch(`/api/routes/${routeId}`);
@@ -47,7 +61,13 @@ export function PreviewClient() {
         lon: point.lon,
         timestamp: Date.parse(point.timestamp)
       }));
-      setSamples(resampleTrack(smoothTrack(parsed), 280));
+      const smoothed = smoothTrack(parsed);
+      setSamples(resampleTrack(smoothed, 280));
+      if (smoothed.length >= 2) {
+        const durationMs = smoothed[smoothed.length - 1].timestamp - smoothed[0].timestamp;
+        const derivedSeconds = Math.max(10, Math.round(durationMs / 1000));
+        setDurationSeconds(derivedSeconds);
+      }
     })();
   }, [routeId]);
 
@@ -82,13 +102,20 @@ export function PreviewClient() {
   }, [samples]);
 
   useEffect(() => {
+    if (!routeId) return;
+    const payload = JSON.stringify({ keyframes, durationSeconds });
+    localStorage.setItem(`keyframes:${routeId}`, payload);
+  }, [keyframes, durationSeconds, routeId]);
+
+  useEffect(() => {
     if (!playing || samples.length < 2) {
       return;
     }
     const timer = window.setInterval(() => {
       let reachedEnd = false;
       setProgress((current) => {
-        const next = current + 0.0025 * speed;
+        const deltaSeconds = 0.033 * speed; // ~33ms tick
+        const next = current + deltaSeconds / Math.max(1, durationSeconds);
         if (next >= 1) {
           reachedEnd = true;
           return 1;
@@ -100,7 +127,7 @@ export function PreviewClient() {
       }
     }, 33);
     return () => window.clearInterval(timer);
-  }, [playing, samples.length, speed]);
+  }, [durationSeconds, playing, samples.length, speed]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -149,7 +176,12 @@ export function PreviewClient() {
       </div>
 
       <div className="grid h-[calc(100vh-96px)] gap-4 px-2 lg:grid-cols-[400px_1fr]">
-        <KeyframeEditor keyframes={keyframes} onChange={setKeyframes} />
+        <KeyframeEditor
+          keyframes={keyframes}
+          onChange={setKeyframes}
+          durationSeconds={durationSeconds}
+          onDurationChange={setDurationSeconds}
+        />
 
         <div className="flex h-full flex-col gap-4">
           <TimelineControls
@@ -175,6 +207,8 @@ export function PreviewClient() {
               playing={playing}
               followCamera={followCamera}
               cinematic={cinematic}
+              keyframes={keyframes}
+              timelineDurationSeconds={durationSeconds}
             />
             {locationInfo && progress < 0.12 ? (
               <div className="absolute left-4 top-4 z-10 flex items-center gap-3 rounded bg-slate-900/90 px-3 py-2 shadow-lg">

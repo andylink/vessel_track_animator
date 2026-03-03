@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { BoundingSphere, Entity, Viewer } from 'cesium';
 import type { VesselType } from '@vessel/shared/geo';
 import type { TimedPosition } from '@/lib/trackOps';
 import { interpolatePosition } from '@/lib/trackOps';
 import { isNearPort } from '@/lib/ports';
+import type { Keyframe } from '@/components/KeyframeEditor';
 
 import 'cesium/Build/Cesium/Widgets/widgets.css';
 
@@ -20,7 +22,9 @@ export function GlobeViewer({
   progress,
   playing,
   followCamera,
-  cinematic
+  cinematic,
+  keyframes,
+  timelineDurationSeconds
 }: {
   samples: TimedPosition[];
   vesselType: VesselType;
@@ -28,18 +32,60 @@ export function GlobeViewer({
   playing: boolean;
   followCamera: boolean;
   cinematic: boolean;
+  keyframes?: Keyframe[];
+  timelineDurationSeconds?: number;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const viewerRef = useRef<any>(null);
-  const vesselEntityRef = useRef<any>(null);
-  const lineEntityRef = useRef<any>(null);
-  const cesiumRef = useRef<any>(null);
+  const viewerRef = useRef<Viewer | null>(null);
+  const vesselEntityRef = useRef<Entity | null>(null);
+  const lineEntityRef = useRef<Entity | null>(null);
+  const cesiumRef = useRef<typeof import('cesium') | null>(null);
   const [viewerReady, setViewerReady] = useState(false);
   const lastCameraUpdateRef = useRef(0);
   const initialFitRef = useRef(false);
-  const routeBoundsRef = useRef<any>(null);
+  const routeBoundsRef = useRef<BoundingSphere | null>(null);
 
   const current = useMemo(() => interpolatePosition(samples, progress), [samples, progress]);
+
+  const cameraKeyframe = useMemo(() => {
+    if (!keyframes || keyframes.length === 0) return null;
+    const parsed = keyframes
+      .map((kf) => ({
+        ...kf,
+        seconds: parseTimeToSeconds(kf.time)
+      }))
+      .filter((kf) => kf.seconds >= 0)
+      .sort((a, b) => a.seconds - b.seconds);
+
+    if (parsed.length === 0) return null;
+    const totalDuration = Math.max(
+      timelineDurationSeconds ?? parsed[parsed.length - 1]?.seconds ?? 0,
+      1
+    );
+    const nowSeconds = progress * totalDuration;
+    const nextIndex = parsed.findIndex((kf) => kf.seconds >= nowSeconds);
+
+    if (nextIndex === -1) {
+      const last = parsed[parsed.length - 1];
+      return { heading: last.heading, pitch: last.pitch, altitude: last.altitude };
+    }
+    if (nextIndex === 0) {
+      const first = parsed[0];
+      return { heading: first.heading, pitch: first.pitch, altitude: first.altitude };
+    }
+
+    const prev = parsed[nextIndex - 1];
+    const next = parsed[nextIndex];
+    const span = Math.max(1, next.seconds - prev.seconds);
+    const t = clamp((nowSeconds - prev.seconds) / span, 0, 1);
+    const eased = applyEasing(t, prev.easing || 'Linear');
+
+    return {
+      heading: lerp(prev.heading, next.heading, eased),
+      pitch: lerp(prev.pitch, next.pitch, eased),
+      altitude: lerp(prev.altitude, next.altitude, eased)
+    };
+  }, [keyframes, progress, timelineDurationSeconds]);
 
   useEffect(() => {
     if (!containerRef.current || viewerRef.current) {
@@ -147,6 +193,7 @@ export function GlobeViewer({
 
       let altitude = cruiseAltitude;
       let pitch = cruisePitch;
+      let heading = viewer.camera.heading;
       let targetLon = current.lon;
       let targetLat = current.lat;
 
@@ -183,12 +230,18 @@ export function GlobeViewer({
         pitch = pitch * (1 - endBlend) + basePitch * endBlend;
       }
 
+      if (cameraKeyframe) {
+        altitude = cameraKeyframe.altitude;
+        pitch = Cesium.Math.toRadians(cameraKeyframe.pitch);
+        heading = Cesium.Math.toRadians(cameraKeyframe.heading);
+      }
+
       viewer.camera.setView({
         destination: Cesium.Cartesian3.fromDegrees(targetLon, targetLat, altitude),
-        orientation: { heading: viewer.camera.heading, pitch, roll: 0 }
+        orientation: { heading, pitch, roll: 0 }
       });
     }
-  }, [cinematic, current, followCamera, playing, progress, samples.length, viewerReady]);
+  }, [cameraKeyframe, cinematic, current, followCamera, playing, progress, samples.length, viewerReady]);
 
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -210,4 +263,33 @@ export function GlobeViewer({
   }, [samples, followCamera, viewerReady]);
 
   return <div ref={containerRef} className="h-[70vh] w-full rounded border border-slate-700" />;
+}
+
+function parseTimeToSeconds(time: string) {
+  const match = time.match(/^(\d{2}):(\d{2})$/);
+  if (!match) return -1;
+  const minutes = Number(match[1]);
+  const seconds = Number(match[2]);
+  return minutes * 60 + seconds;
+}
+
+function lerp(a: number, b: number, t: number) {
+  return a + (b - a) * t;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function applyEasing(t: number, easing: string) {
+  switch (easing) {
+    case 'Ease In':
+      return t * t;
+    case 'Ease Out':
+      return 1 - (1 - t) * (1 - t);
+    case 'Ease In-Out':
+      return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    default:
+      return t;
+  }
 }
